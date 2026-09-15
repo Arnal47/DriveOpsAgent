@@ -21,6 +21,7 @@ class Evidence(BaseModel):
     field: str
     snippet: str
     confidence: float = Field(ge=0, le=1)
+    value: float | None = None
 
 
 class Claim(BaseModel):
@@ -28,6 +29,7 @@ class Claim(BaseModel):
     text: str
     evidence_ids: list[str] = []
     confidence: float = Field(ge=0, le=1)
+    value: float | None = None
     uncertain: bool = False
     unsupported: bool = False
 

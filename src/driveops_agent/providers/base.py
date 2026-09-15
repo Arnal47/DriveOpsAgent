@@ -23,9 +23,11 @@ class MockProvider:
             pick = next(
                 (x for x in ids if x.split("-")[0] in task or x.replace("-", " ") in task), None
             )
-            if any(x in task for x in ["can", "timeout"]):
+            if any(x in task for x in ["can", "timeout", "u1000"]):
                 pick = "can-timeout-004"
-            elif any(x in task for x in ["pressure", "under-response"]):
+            elif any(
+                x in task for x in ["pressure", "under-response", "c1234", "deceleration gap"]
+            ):
                 pick = "pressure-003"
             elif any(x in task for x in ["wheel", "speed"]):
                 pick = "wheel-speed-002"
@@ -120,7 +122,7 @@ class MockProvider:
         if metrics:
             claims.append(
                 {
-                    "text": "Signal metric measured: 28.0 bar.",
+                    "text": f"Signal metric measured: {metrics[0].get('value')} bar.",
                     "evidence_ids": [metrics[0]["evidence_id"]],
                     "confidence": 0.9,
                     "kind": "numeric",
