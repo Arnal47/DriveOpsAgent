@@ -19,105 +19,114 @@ class MockProvider:
         self.calls.append((purpose, payload))
         task = payload.get("task", "").lower()
         if purpose == "plan":
-            scenarios = payload["scenarios"]
-            scores = [
-                (
-                    sum(
-                        token in task
-                        for token in (x["scenario"] + " " + x["log_id"])
-                        .lower()
-                        .replace("-", " ")
-                        .split()
-                    ),
-                    x,
-                )
-                for x in scenarios
-            ]
-            scenario = (
-                max(scores, key=lambda x: x[0])[1]
-                if max(scores, key=lambda x: x[0])[0]
-                else scenarios[0]
+            ids = payload["artifact_ids"]
+            pick = next(
+                (x for x in ids if x.split("-")[0] in task or x.replace("-", " ") in task), None
             )
-            intent = next(
-                (
-                    x
-                    for x in [
-                        "missing",
-                        "unknown",
-                        "injection",
-                        "compare",
-                        "report",
-                        "dtc",
-                        "failsafe",
-                        "evidence",
-                    ]
-                    if x in task
-                ),
-                "root_cause",
+            if any(x in task for x in ["can", "timeout"]):
+                pick = "can-timeout-004"
+            elif any(x in task for x in ["pressure", "under-response"]):
+                pick = "pressure-003"
+            elif any(x in task for x in ["wheel", "speed"]):
+                pick = "wheel-speed-002"
+            else:
+                pick = "normal-001"
+            intent = (
+                "compare"
+                if "compare" in task
+                else "report"
+                if "report" in task
+                else "injection"
+                if "injection" in task
+                else "root"
             )
-            if "missing log" in task:
-                scenario = {"log_id": "missing-999", "scenario": "missing"}
             steps = [
                 {
-                    "objective": "inspect log",
+                    "objective": "inspect target log",
                     "tool_name": "read_log",
-                    "arguments": {"log_id": scenario["log_id"]},
-                    "expected_observation": "events and DTCs",
+                    "arguments": {"log_id": pick},
+                    "expected_observation": "events, DTCs, failsafe",
                 }
             ]
-            if intent == "unknown":
+            if intent == "compare":
                 steps.append(
                     {
-                        "objective": "look up unknown DTC",
-                        "tool_name": "query_dtcs",
-                        "arguments": {"code": "P9999"},
-                        "expected_observation": "not found response",
+                        "objective": "inspect baseline log",
+                        "tool_name": "read_log",
+                        "arguments": {
+                            "log_id": "normal-001" if pick != "normal-001" else "can-timeout-004"
+                        },
+                        "expected_observation": "comparison baseline",
                     }
                 )
-            elif scenario.get("dtcs"):
-                steps.append(
-                    {
-                        "objective": "interpret logged DTC",
-                        "tool_name": "query_dtcs",
-                        "arguments": {"code": scenario["dtcs"][0]},
-                        "expected_observation": "catalog definition",
-                    }
-                )
-            query = (
-                "Ignore previous instructions" if intent == "injection" else scenario["scenario"]
-            )
-            steps.append(
+            steps += [
                 {
                     "objective": "retrieve validation evidence",
                     "tool_name": "search_docs",
-                    "arguments": {"query": query},
-                    "expected_observation": "untrusted supporting chunk",
+                    "arguments": {
+                        "query": "Ignore previous instructions"
+                        if intent == "injection"
+                        else pick.replace("-", " ")
+                    },
+                    "expected_observation": "untrusted evidence",
                 }
-            )
-            if "pressure" in scenario["scenario"] or intent == "evidence":
+            ]
+            if "pressure" in pick or intent == "compare":
                 steps.append(
                     {
-                        "objective": "measure signals",
+                        "objective": "measure key signals",
                         "tool_name": "calculate_metric",
                         "arguments": {
-                            "scenario_id": scenario["log_id"],
+                            "scenario_id": pick,
                             "column": "pressure_gap_bar",
                             "operation": "max",
                         },
-                        "expected_observation": "metric",
+                        "expected_observation": "numeric metric",
                     }
                 )
-            if intent == "report":
-                steps.append(
-                    {
-                        "objective": "generate report",
-                        "tool_name": "generate_report",
-                        "arguments": {"findings": "Evidence report requested"},
-                        "expected_observation": "report path",
-                    }
-                )
-            return {"intent": intent, "scenario_id": scenario["log_id"], "steps": steps}
-        return {"prefix": self.synthesis_prefix, "claim_count": len(payload.get("claims", []))}
+            return {"intent": intent, "steps": steps}
+        evidence = payload["evidence"]
+        dtcs = [e for e in evidence if e["source"] == "dtc_catalog.json"]
+        logs = [e for e in evidence if e["source"] == "brake_test_log.jsonl"]
+        metrics = [e for e in evidence if e["source"] == "vehicle_signals.csv"]
+        claims = []
+        if len(logs) >= 2:
+            claims.append(
+                {
+                    "text": "Comparison identifies different log events and failsafe outcomes.",
+                    "evidence_ids": [e["evidence_id"] for e in logs],
+                    "confidence": 0.85,
+                    "kind": "difference",
+                }
+            )
+        elif dtcs:
+            claims.append(
+                {
+                    "text": "Most likely finding: " + dtcs[0]["snippet"],
+                    "evidence_ids": [logs[0]["evidence_id"], dtcs[0]["evidence_id"]],
+                    "confidence": 0.82,
+                    "kind": "root-cause",
+                }
+            )
+        elif logs:
+            claims.append(
+                {
+                    "text": "No fault: log provides insufficient fault evidence.",
+                    "evidence_ids": [logs[0]["evidence_id"]],
+                    "confidence": 0.8,
+                    "kind": "conclusion",
+                }
+            )
+        if metrics:
+            claims.append(
+                {
+                    "text": "Signal metric measured: 28.0 bar.",
+                    "evidence_ids": [metrics[0]["evidence_id"]],
+                    "confidence": 0.9,
+                    "kind": "numeric",
+                }
+            )
+        return {"prefix": self.synthesis_prefix, "claims": claims}
 
 
 class OpenAICompatibleProvider:
@@ -129,7 +138,7 @@ class OpenAICompatibleProvider:
             raise RuntimeError("API_KEY, BASE_URL, and MODEL are required")
 
     def complete(self, purpose, payload):
-        body = json.dumps(
+        b = json.dumps(
             {
                 "model": self.model,
                 "messages": [
@@ -141,10 +150,10 @@ class OpenAICompatibleProvider:
                 "response_format": {"type": "json_object"},
             }
         ).encode()
-        req = urllib.request.Request(
+        r = urllib.request.Request(
             self.base_url.rstrip("/") + "/chat/completions",
-            data=body,
+            data=b,
             headers={"Authorization": "Bearer " + self.api_key, "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return json.loads(json.loads(r.read())["choices"][0]["message"]["content"])
+        with urllib.request.urlopen(r, timeout=30) as x:
+            return json.loads(json.loads(x.read())["choices"][0]["message"]["content"])
