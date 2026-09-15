@@ -300,3 +300,62 @@ def test_openai_provider_invalid_schema_exhausted_through_agent(tmp_path):
         if state.final_answer
         else state.errors
     )
+
+
+def test_openai_provider_direct_timeout_retry_success():
+    from driveops_agent.providers.base import OpenAICompatibleProvider
+
+    calls = []
+
+    def transport(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError("temporary timeout")
+        return _provider_response({"claims": []})
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    assert provider.complete("synthesis", {"evidence": []}) == {"claims": []}
+    assert provider.last_attempts == 2
+    assert provider.last_errors
+
+
+def test_openai_provider_direct_invalid_json_retry_success():
+    from driveops_agent.providers.base import OpenAICompatibleProvider
+
+    calls = []
+
+    def transport(*args):
+        calls.append(1)
+        return b"not-json" if len(calls) == 1 else _provider_response({"claims": []})
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    assert provider.complete("synthesis", {"evidence": []}) == {"claims": []}
+    assert provider.last_attempts == 2
+    assert "invalid provider JSON" in provider.last_errors[0]
+
+
+def test_openai_provider_direct_retries_exhausted_raises_provider_error():
+    from driveops_agent.providers.base import OpenAICompatibleProvider, ProviderError
+
+    def transport(*args):
+        raise TimeoutError("offline")
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    with pytest.raises(ProviderError) as exc_info:
+        provider.complete("synthesis", {"evidence": []})
+    assert exc_info.value.code == "retry_exhausted"
+    assert provider.last_attempts == 2
+
+
+def test_agent_normal_run_calls_planner_provider_once(tmp_path):
+    provider = MockProvider()
+    state = DriveOpsAgent(ROOT / "data", tmp_path, provider).run("CAN timeout")
+    planner_calls = [purpose for purpose, _ in provider.calls if purpose == "plan"]
+    assert state.status.value == "complete"
+    assert planner_calls == ["plan"]

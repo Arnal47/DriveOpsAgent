@@ -35,6 +35,8 @@ class DriveOpsAgent:
             start = time.monotonic()
             try:
                 result = self.provider.complete(purpose, payload)
+                for error in getattr(self.provider, "last_errors", []):
+                    self.trace.emit("retry", tool=purpose, success=False, error=error)
                 self.trace.emit(
                     "provider_call", tool=purpose, latency_ms=(time.monotonic() - start) * 1000
                 )
@@ -193,11 +195,7 @@ class DriveOpsAgent:
                     self.trace.emit("review_required", error="external adapter failure")
                     self._persist(s)
                     return s
-            proxy = SimpleNamespace(complete=self._provider_complete)
-            intent, plan = make_plan(
-                task, proxy, ["normal-001", "wheel-speed-002", "pressure-003", "can-timeout-004"]
-            )
-            s.current_plan = plan
+
             i = 0
             while i < len(s.current_plan):
                 step = s.current_plan[i]

@@ -152,6 +152,8 @@ class OpenAICompatibleProvider:
         self.timeout = timeout
         self.max_retries = max_retries
         self.calls = []
+        self.last_attempts = 0
+        self.last_errors = []
 
     def _http_transport(self, body, headers, timeout):
         request = urllib.request.Request(
@@ -173,6 +175,8 @@ class OpenAICompatibleProvider:
 
     def complete(self, purpose, payload):
         self.calls.append((purpose, payload))
+        self.last_attempts = 0
+        self.last_errors = []
         body = json.dumps(
             {
                 "model": self.model,
@@ -188,6 +192,7 @@ class OpenAICompatibleProvider:
         headers = {"Authorization": "Bearer " + self.api_key, "Content-Type": "application/json"}
         last = None
         for attempt in range(self.max_retries + 1):
+            self.last_attempts += 1
             try:
                 result = self._decode(self.transport(body, headers, self.timeout))
                 if purpose == "plan" and not isinstance(result.get("steps"), list):
