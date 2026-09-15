@@ -175,3 +175,14 @@ def test_adapter_exhausted_routes_review(tmp_path):
         ROOT / "data", tmp_path, MockProvider(), external_adapter=Adapter(transport, retries=0)
     ).run("CAN timeout")
     assert state.status.value == "needs_review"
+
+
+def test_agent_memory_hit_and_provenance(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    first = agent.run("CAN timeout")
+    second = agent.run("CAN timeout")
+    import json
+
+    events = [json.loads(x)["event_type"] for x in agent.trace.path.read_text().splitlines()]
+    assert first.run_id != second.run_id and "memory_hit" in events
+    assert all(e.provenance == "current" for e in second.evidence)

@@ -74,6 +74,8 @@ class DriveOpsAgent:
         prior = self.memory.list()
         self.trace.emit("memory_lookup")
         self.trace.emit("memory_hit" if prior else "memory_miss")
+        if prior:
+            s.decisions.append("memory context available; current evidence remains authoritative")
         try:
             if self.external_adapter is not None:
                 try:
