@@ -60,3 +60,56 @@ The Agent asks its provider for a structured, task-derived plan. Every plan step
 RAG chunks from multiple local documents are untrusted data. Retrieved chunks are attached as evidence and used in root-cause claims; injected content never changes the tool policy. Final answers contain claim IDs, evidence links, confidence, and uncertainty. The verifier checks each link, source identity, DTC support, numerical signal evidence, and conflicts.
 
 Evaluation compares actual tools to expected/forbidden tools, final-claim evidence links to required evidence, and expected root-cause keywords. It reports task success, tool-selection accuracy, evidence coverage, unsupported-claim rate, and hallucinated-source rate from real executions. CI enforces the configured quality thresholds; do not treat any historical percentage as a promise.
+
+## V2 production-agent foundations
+
+V2 keeps the evidence-first V1 loop and adds production-shaped boundaries while remaining fully offline in CI.
+
+```mermaid
+flowchart TD
+  User --> Planner --> State[Agent State Machine]
+  State --> Registry[Tool Registry]
+  Registry --> Local[Local tools]
+  Registry --> External[External / MCP-ready adapters]
+  Local --> Evidence
+  External --> Evidence
+  Evidence --> Synthesis[Provider synthesis]
+  Synthesis --> Verifier --> HITL[Human review gate] --> Answer
+  Memory[(SQLite memory)] <--> State
+  State --> Trace[JSONL execution trace]
+```
+
+### Providers and failure recovery
+
+`MockProvider` provides deterministic, input-dependent structured plans and claims. `OpenAICompatibleProvider` accepts an injectable transport and validates structured responses while handling timeouts, HTTP failures, invalid JSON, invalid schemas, retries, and exhaustion. Tests and CI use fake transports and never access the network or require credentials.
+
+### External adapters
+
+The MCP-ready adapter boundary exposes discovery, structured requests and untrusted responses. Timeouts are retried, consecutive failures drive a circuit breaker, and exhausted calls route the Agent to `NEEDS_REVIEW` instead of swallowing errors.
+
+### Persistent memory and review
+
+SQLite stores sessions, tool calls, evidence, decisions, summaries, and pending reviews using parameterized statements. Similar history is retrieved by task/scenario relevance and supplied to synthesis with `provenance=memory`; current evidence remains authoritative. A stale conflict routes to review. Pending review survives a new process and can be resolved with:
+
+```bash
+python -m driveops_agent.cli memory list
+python -m driveops_agent.cli memory show RUN_ID
+python -m driveops_agent.cli review RUN_ID --approve
+python -m driveops_agent.cli review RUN_ID --reject
+```
+
+### Tracing and retrieval V2
+
+Every run writes a run-isolated JSONL trace containing provider, memory, tool, retry, review, save, and lifecycle events with measured latency and a stable schema. Retrieval is selectable as `tfidf`, `bm25`, or `hybrid`; all backends are lightweight and offline.
+
+### V2 evaluation
+
+The evaluation suite contains unique V1 regression and V2 behavioral cases. V2 cases execute provider recovery, adapter retry/exhaustion, memory hit/miss/stale conflict, review approval/rejection, prompt-injection isolation, and BM25/hybrid retrieval through `DriveOpsAgent`. Metrics are derived from final state, provider/adapter calls, synthesis context, and trace events. CI fails when any required metric is absent or below its quality gate.
+
+### V1 versus V2
+
+V1 established dynamic planning, local tools, offline retrieval, evidence-linked claims, and verification. V2 adds injectable real-provider transport, external adapter resilience, persistent session memory, durable HITL review, structured observability, retrieval backends, and behavioral operational metrics.
+
+### V2 limitations
+
+Adapters are in-process/MCP-ready boundaries rather than a deployed MCP server. SQLite is suitable for a local portfolio system, not distributed production workloads. Review approval completes a safely paused analysis; no vehicle-control action is implemented. Fixture evidence and deterministic offline providers are not substitutes for safety validation on real vehicles.

@@ -7,3 +7,6 @@ reports/traces/*.jsonl
 .ruff_cache/
 reports/*.sqlite
 reports/traces/*.jsonl
+reports/eval_runs/
+reports/**/driveops_memory.sqlite
+reports/**/traces/*.jsonl

@@ -16,15 +16,19 @@ class Adapter:
         self.retries = retries
         self.threshold = threshold
         self.failures = 0
+        self.last_attempts = 0
 
     def discover(self):
         return self.transport("discover", {})
 
     def request(self, tool, args):
         if self.failures >= self.threshold:
+            self.last_attempts = 0
             raise ToolError("circuit_open", "adapter circuit open", False)
         last = None
+        self.last_attempts = 0
         for _ in range(self.retries + 1):
+            self.last_attempts += 1
             try:
                 start = monotonic()
                 out = self.transport(tool, args, timeout=self.timeout)
@@ -32,7 +36,7 @@ class Adapter:
                 out["untrusted"] = True
                 self.failures = 0
                 return out
-            except Exception as e:
-                last = e
+            except Exception as exc:
+                last = exc
                 self.failures += 1
         raise ToolError("unavailable", str(last))

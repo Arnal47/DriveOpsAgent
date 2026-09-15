@@ -34,9 +34,9 @@ class ReportArgs(BaseModel):
 
 
 class ToolRegistry:
-    def __init__(self, data_dir: Path, reports_dir: Path):
+    def __init__(self, data_dir: Path, reports_dir: Path, retrieval_backend="tfidf"):
         self.data_dir, self.reports_dir = data_dir, reports_dir
-        self.retriever = OfflineRetriever(data_dir)
+        self.retriever = OfflineRetriever(data_dir, retrieval_backend)
         self.schemas = {
             "search_docs": SearchArgs,
             "read_log": LogArgs,

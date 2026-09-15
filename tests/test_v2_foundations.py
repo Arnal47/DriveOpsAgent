@@ -195,3 +195,108 @@ def test_current_evidence_overrides_stale_memory(tmp_path):
     assert state.status.value == "needs_review"
     assert all(e.provenance == "current" for e in state.evidence)
     assert "current evidence" in state.decisions[0]
+
+
+def _provider_response(content):
+    return {"choices": [{"message": {"content": json.dumps(content)}}]}
+
+
+def test_openai_provider_timeout_recovery_through_agent(tmp_path):
+    from driveops_agent.providers.base import OpenAICompatibleProvider
+
+    calls = []
+
+    def transport(body, headers, timeout):
+        calls.append(1)
+        request = json.loads(json.loads(body)["messages"][0]["content"])
+        if len(calls) == 1:
+            raise TimeoutError("first attempt")
+        if request["purpose"] == "plan":
+            return _provider_response(MockProvider().complete("plan", request["payload"]))
+        return _provider_response(MockProvider().complete("synthesis", request["payload"]))
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, provider)
+    state = agent.run("CAN timeout")
+    assert state.status.value == "complete" and any(
+        e["event_type"] == "retry" for e in agent.trace.events
+    )
+
+
+def test_openai_provider_invalid_json_recovery_through_agent(tmp_path):
+    from driveops_agent.providers.base import OpenAICompatibleProvider
+
+    calls = []
+
+    def transport(body, headers, timeout):
+        calls.append(1)
+        request = json.loads(json.loads(body)["messages"][0]["content"])
+        if len(calls) == 1:
+            return b"not-json"
+        return _provider_response(MockProvider().complete(request["purpose"], request["payload"]))
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    assert (
+        DriveOpsAgent(ROOT / "data", tmp_path, provider).run("CAN timeout").status.value
+        == "complete"
+    )
+
+
+def test_openai_provider_retry_exhausted_through_agent(tmp_path):
+    from driveops_agent.providers.base import OpenAICompatibleProvider
+
+    def transport(*args):
+        raise TimeoutError("offline")
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    assert (
+        DriveOpsAgent(ROOT / "data", tmp_path, provider).run("CAN timeout").status.value == "failed"
+    )
+
+
+def test_review_state_restores_in_new_process_object(tmp_path):
+    pending = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider()).run("conflict CAN timeout")
+    restored = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider()).review(pending.run_id, True)
+    assert restored.status.value == "complete"
+
+
+def test_memory_store_saves_all_run_artifacts(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    state = agent.run("CAN timeout")
+    details = agent.memory.details(state.run_id)
+    assert (
+        details["tool_calls"]
+        and details["evidence"]
+        and details["decisions"] == []
+        and details["summaries"]
+    )
+
+
+@pytest.mark.parametrize("backend", ["bm25", "hybrid"])
+def test_retrieval_v2_backend_hits_expected_document(tmp_path, backend):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider(), retrieval_backend=backend)
+    hits = agent.registry.retriever.search("wheel speed mismatch validation")
+    assert hits and any("validation" in hit["source_id"] for hit in hits)
+
+
+def test_openai_provider_invalid_schema_exhausted_through_agent(tmp_path):
+    from driveops_agent.providers.base import OpenAICompatibleProvider
+
+    def transport(*args):
+        return _provider_response({"unexpected": True})
+
+    provider = OpenAICompatibleProvider(
+        transport, max_retries=1, api_key="x", base_url="https://offline", model="fake"
+    )
+    state = DriveOpsAgent(ROOT / "data", tmp_path, provider).run("CAN timeout")
+    assert (
+        state.status.value == "failed" and "retry_exhausted" not in state.final_answer
+        if state.final_answer
+        else state.errors
+    )

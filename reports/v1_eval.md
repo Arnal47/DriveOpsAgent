@@ -1,4 +1,7 @@
-- cases: 24
+- cases: 31
+- unique_cases: 31
+- v1_regression_success: 1.0
+- v2_task_success: 1.0
 - task_success_rate: 1.0
 - tool_selection_accuracy: 1.0
 - evidence_coverage: 1.0
