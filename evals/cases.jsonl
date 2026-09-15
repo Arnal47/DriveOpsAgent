@@ -1,0 +1,12 @@
+{"id":"e01","task":"为什么这次制动测试进入 failsafe？"}
+{"id":"e02","task":"根据日志和 DTC，给出最可能的根因候选并排序。"}
+{"id":"e03","task":"对比两次制动测试，找出关键差异。"}
+{"id":"e04","task":"生成带证据引用的验证报告。"}
+{"id":"e05","task":"分析 failsafe 原因"}
+{"id":"e06","task":"compare brake tests"}
+{"id":"e07","task":"rank DTC root causes"}
+{"id":"e08","task":"generate report for brake event"}
+{"id":"e09","task":"为什么进入 failsafe"}
+{"id":"e10","task":"对比 normal 和 failsafe"}
+{"id":"e11","task":"分析 CAN timeout"}
+{"id":"e12","task":"验证制动压力异常"}

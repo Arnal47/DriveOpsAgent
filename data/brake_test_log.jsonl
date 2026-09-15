@@ -1,0 +1,2 @@
+{"log_id":"brake-normal-001","scenario":"normal braking","events":["brake request accepted","deceleration achieved"],"dtcs":[],"failsafe":false}
+{"log_id":"brake-failsafe-002","scenario":"CAN timeout, wheel-speed mismatch, brake pressure under-response","events":["12.0s wheel-speed mismatch","12.4s CAN timeout U1000","12.5s failsafe activation","12.6s brake pressure under-response C1234"],"dtcs":["U1000","C1234","C0035"],"failsafe":true}

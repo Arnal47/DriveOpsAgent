@@ -1,0 +1,5 @@
+[
+  {"code":"U1000","description":"CAN communication timeout between brake controller and vehicle gateway.","severity":"high"},
+  {"code":"C1234","description":"Brake pressure under-response relative to requested deceleration.","severity":"medium"},
+  {"code":"C0035","description":"Wheel-speed sensor mismatch.","severity":"medium"}
+]
