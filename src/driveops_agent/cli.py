@@ -4,31 +4,42 @@ from pathlib import Path
 
 from .agent import DriveOpsAgent
 from .evals.runner import run_evals
-
-
-def paths():
-    root = Path(__file__).resolve().parents[2]
-    return root / "data", root / "reports", root
+from .providers import MockProvider, OpenAICompatibleProvider
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="cmd", required=True)
-    run = sub.add_parser("run")
-    run.add_argument("--task", required=True)
-    run.add_argument("--provider", default="mock", choices=["mock"])
-    sub.add_parser("ingest")
-    sub.add_parser("eval")
-    args = parser.parse_args()
-    data, reports, root = paths()
-    if args.cmd == "ingest":
-        print(json.dumps({"chunks": len(DriveOpsAgent(data, reports).registry.retriever.chunks)}))
+    p = argparse.ArgumentParser()
+    s = p.add_subparsers(dest="cmd", required=True)
+    r = s.add_parser("run")
+    r.add_argument("--task", required=True)
+    r.add_argument("--provider", choices=["mock", "openai-compatible"], default="mock")
+    s.add_parser("ingest")
+    s.add_parser("eval")
+    a = p.parse_args()
+    root = Path(__file__).resolve().parents[2]
+    if a.cmd == "ingest":
+        print(
+            json.dumps(
+                {
+                    "chunks": len(
+                        DriveOpsAgent(root / "data", root / "reports").registry.retriever.chunks
+                    )
+                }
+            )
+        )
         return
-    if args.cmd == "eval":
+    if a.cmd == "eval":
         print(json.dumps(run_evals(root), indent=2))
         return
-    state = DriveOpsAgent(data, reports).run(args.task)
-    print(json.dumps(state.model_dump(), ensure_ascii=False, indent=2, default=str))
+    provider = MockProvider() if a.provider == "mock" else OpenAICompatibleProvider()
+    print(
+        json.dumps(
+            DriveOpsAgent(root / "data", root / "reports", provider).run(a.task).model_dump(),
+            ensure_ascii=False,
+            default=str,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

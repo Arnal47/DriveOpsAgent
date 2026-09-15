@@ -1,6 +1,9 @@
-time_s,brake_pressure_bar,requested_pressure_bar,wheel_speed_fl,wheel_speed_fr
-12.0,10,35,30,20
-12.1,11,35,28,19
-12.2,12,35,26,18
-12.3,13,35,24,17
-12.4,14,35,22,16
+scenario_id,time_s,pressure_gap_bar,wheel_speed_delta
+normal-001,1,1,0
+normal-001,2,2,0
+wheel-speed-002,1,2,12
+wheel-speed-002,2,2,15
+pressure-003,1,24,1
+pressure-003,2,28,1
+can-timeout-004,1,3,1
+can-timeout-004,2,3,1

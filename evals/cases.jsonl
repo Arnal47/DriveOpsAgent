@@ -1,12 +1,16 @@
-{"id":"e01","task":"为什么这次制动测试进入 failsafe？"}
-{"id":"e02","task":"根据日志和 DTC，给出最可能的根因候选并排序。"}
-{"id":"e03","task":"对比两次制动测试，找出关键差异。"}
-{"id":"e04","task":"生成带证据引用的验证报告。"}
-{"id":"e05","task":"分析 failsafe 原因"}
-{"id":"e06","task":"compare brake tests"}
-{"id":"e07","task":"rank DTC root causes"}
-{"id":"e08","task":"generate report for brake event"}
-{"id":"e09","task":"为什么进入 failsafe"}
-{"id":"e10","task":"对比 normal 和 failsafe"}
-{"id":"e11","task":"分析 CAN timeout"}
-{"id":"e12","task":"验证制动压力异常"}
+{"required_evidence":["log-normal-001"],"allowed_uncertainty":true,"expected_tools":["read_log","search_docs"],"expected_claim_keywords":["No fault"],"scenario_id":"normal-001","forbidden_tools":["query_dtcs","calculate_metric"],"task":"analyze normal no-fault run"}
+{"required_evidence":["log-wheel-speed-002","dtc-C0035"],"allowed_uncertainty":true,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["wheel-speed"],"scenario_id":"wheel-speed-002","forbidden_tools":["calculate_metric"],"task":"analyze wheel speed mismatch"}
+{"required_evidence":["log-pressure-003","dtc-C1234","metric-pressure-003-pressure_gap_bar-max"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs","calculate_metric"],"expected_claim_keywords":["pressure"],"scenario_id":"pressure-003","forbidden_tools":[],"task":"analyze brake pressure under-response"}
+{"required_evidence":["log-can-timeout-004","dtc-U1000"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["CAN timeout"],"scenario_id":"can-timeout-004","forbidden_tools":["calculate_metric"],"task":"why CAN timeout enters failsafe"}
+{"required_evidence":["log-normal-001"],"allowed_uncertainty":true,"expected_tools":["read_log","search_docs"],"expected_claim_keywords":["No fault"],"scenario_id":"normal-001","forbidden_tools":["query_dtcs","calculate_metric"],"task":"analyze normal no-fault run"}
+{"required_evidence":["log-wheel-speed-002","dtc-C0035"],"allowed_uncertainty":true,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["wheel-speed"],"scenario_id":"wheel-speed-002","forbidden_tools":["calculate_metric"],"task":"analyze wheel speed mismatch"}
+{"required_evidence":["log-pressure-003","dtc-C1234","metric-pressure-003-pressure_gap_bar-max"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs","calculate_metric"],"expected_claim_keywords":["pressure"],"scenario_id":"pressure-003","forbidden_tools":[],"task":"analyze brake pressure under-response"}
+{"required_evidence":["log-can-timeout-004","dtc-U1000"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["CAN timeout"],"scenario_id":"can-timeout-004","forbidden_tools":["calculate_metric"],"task":"why CAN timeout enters failsafe"}
+{"required_evidence":["log-normal-001"],"allowed_uncertainty":true,"expected_tools":["read_log","search_docs"],"expected_claim_keywords":["No fault"],"scenario_id":"normal-001","forbidden_tools":["query_dtcs","calculate_metric"],"task":"analyze normal no-fault run"}
+{"required_evidence":["log-wheel-speed-002","dtc-C0035"],"allowed_uncertainty":true,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["wheel-speed"],"scenario_id":"wheel-speed-002","forbidden_tools":["calculate_metric"],"task":"analyze wheel speed mismatch"}
+{"required_evidence":["log-pressure-003","dtc-C1234","metric-pressure-003-pressure_gap_bar-max"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs","calculate_metric"],"expected_claim_keywords":["pressure"],"scenario_id":"pressure-003","forbidden_tools":[],"task":"analyze brake pressure under-response"}
+{"required_evidence":["log-can-timeout-004","dtc-U1000"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["CAN timeout"],"scenario_id":"can-timeout-004","forbidden_tools":["calculate_metric"],"task":"why CAN timeout enters failsafe"}
+{"required_evidence":["log-normal-001"],"allowed_uncertainty":true,"expected_tools":["read_log","search_docs"],"expected_claim_keywords":["No fault"],"scenario_id":"normal-001","forbidden_tools":["query_dtcs","calculate_metric"],"task":"analyze normal no-fault run"}
+{"required_evidence":["log-wheel-speed-002","dtc-C0035"],"allowed_uncertainty":true,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["wheel-speed"],"scenario_id":"wheel-speed-002","forbidden_tools":["calculate_metric"],"task":"analyze wheel speed mismatch"}
+{"required_evidence":["log-pressure-003","dtc-C1234","metric-pressure-003-pressure_gap_bar-max"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs","calculate_metric"],"expected_claim_keywords":["pressure"],"scenario_id":"pressure-003","forbidden_tools":[],"task":"analyze brake pressure under-response"}
+{"required_evidence":["log-can-timeout-004","dtc-U1000"],"allowed_uncertainty":false,"expected_tools":["read_log","query_dtcs","search_docs"],"expected_claim_keywords":["CAN timeout"],"scenario_id":"can-timeout-004","forbidden_tools":["calculate_metric"],"task":"why CAN timeout enters failsafe"}

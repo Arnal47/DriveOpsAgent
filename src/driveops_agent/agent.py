@@ -1,22 +1,20 @@
-from __future__ import annotations
-
 from pathlib import Path
 
-from .models import AgentState, Status, ToolCall
+from .models import AgentState, Claim, Status, ToolCall
 from .planner import make_plan, revise_plan
+from .providers import MockProvider
 from .tools import ToolRegistry
 from .verification import verify
 
 
 class DriveOpsAgent:
-    """Deterministic Observe→Plan→Act→Observe→Reflect→Verify→Answer V1 loop."""
-
-    def __init__(self, data_dir: Path, reports_dir: Path, max_steps: int = 12):
+    def __init__(self, data_dir: Path, reports_dir: Path, provider=None, max_steps=12):
         self.registry = ToolRegistry(data_dir, reports_dir)
+        self.provider = provider or MockProvider()
         self.max_steps = max_steps
-        self.cache: dict[tuple[str, str], tuple[object, list]] = {}
+        self.cache = {}
 
-    def _call(self, state: AgentState, name: str, args: dict):
+    def _call(self, state, name, args):
         if state.step_count >= self.max_steps:
             raise RuntimeError("maximum execution steps reached")
         key = (name, repr(sorted(args.items())))
@@ -30,46 +28,76 @@ class DriveOpsAgent:
         state.tool_calls.append(ToolCall(name=name, arguments=args, cached=cached))
         state.evidence.extend(evidence)
         state.step_count += 1
-        state.observations.append(f"{name} completed")
+        state.observations.append(f"{name}: {value}")
         return value
 
-    def run(self, goal: str) -> AgentState:
-        state = AgentState(user_goal=goal, current_plan=make_plan(goal))
+    def run(self, task):
+        state = AgentState(user_goal=task)
         try:
-            compare = "对比" in goal or "compare" in goal.lower()
-            target = "brake-failsafe-002"
-            self._call(state, "read_log", {"log_id": target})
-            state.completed_steps.append("Read target test log")
-            if compare:
-                self._call(state, "read_log", {"log_id": "brake-normal-001"})
-            self._call(state, "query_dtcs", {"code": "U1000"})
-            self._call(state, "query_dtcs", {"code": "C1234"})
-            self._call(
-                state, "search_docs", {"query": "failsafe CAN timeout brake pressure wheel speed"}
-            )
-            self._call(
-                state, "calculate_metric", {"column": "brake_pressure_bar", "operation": "min"}
-            )
-            state.completed_steps.extend(state.current_plan[1:6])
-            revise_plan(state, "CAN timeout evidence requires prioritizing communications fault")
-            answer = (
-                "Most likely root cause: CAN timeout (U1000) interrupted brake-controller communication; "
-                "the log records failsafe activation immediately after the timeout. Secondary candidate: "
-                "brake pressure under-response (C1234). Evidence is cited from log, DTC catalog, validation notes, and signals."
-            )
-            if compare:
-                answer = (
-                    "Key difference: the failsafe test contains U1000 CAN timeout and failsafe activation; the normal test does not. "
-                    + answer
+            scenario, steps = make_plan(task, self.provider)
+            state.current_plan = steps
+            results = {}
+            for step in state.current_plan:
+                value = self._call(state, step.tool_name, step.arguments)
+                results[step.tool_name] = value
+                step.status = "complete"
+                state.completed_steps.append(step.objective)
+                if isinstance(value, dict) and value.get("status") == "not found":
+                    revise_plan(state, f"{step.tool_name} not found")
+            log = results.get("read_log", {})
+            docs = [e for e in state.evidence if e.tool == "search_docs"]
+            dtcs = [e for e in state.evidence if e.tool == "query_dtcs"]
+            metrics = [e for e in state.evidence if e.tool == "calculate_metric"]
+            root = log.get("root_cause", "unknown")
+            ev = ["log-" + scenario] + [e.evidence_id for e in dtcs + docs + metrics]
+            if log.get("failsafe"):
+                text = f"{root} is the most likely root cause for failsafe in {scenario}."
+                state.claims.append(
+                    Claim(claim_id="root-cause", text=text, evidence_ids=ev, confidence=0.88)
                 )
-            if "报告" in goal or "report" in goal.lower():
-                self._call(state, "generate_report", {"findings": answer})
-            state.final_answer = answer
-            state.completed_steps.extend(state.current_plan[-2:])
+            elif root == "no-fault":
+                state.claims.append(
+                    Claim(
+                        claim_id="no-fault",
+                        text="No fault: there is not enough evidence to support a fault in the normal run.",
+                        evidence_ids=["log-" + scenario],
+                        confidence=0.9,
+                    )
+                )
+            else:
+                state.claims.append(
+                    Claim(
+                        claim_id="finding",
+                        text=f"{root} is observed in {scenario}; failsafe was not asserted.",
+                        evidence_ids=ev,
+                        confidence=0.75,
+                        uncertain=True,
+                    )
+                )
+            if metrics:
+                m = metrics[0]
+                val = results["calculate_metric"]["value"]
+                state.claims.append(
+                    Claim(
+                        claim_id="metric",
+                        text=f"Maximum pressure gap is {val} bar.",
+                        evidence_ids=[m.evidence_id],
+                        confidence=0.9,
+                    )
+                )
+            self.provider.complete(
+                "synthesis",
+                {
+                    "task": task,
+                    "evidence": [e.model_dump() for e in state.evidence],
+                    "claims": [c.text for c in state.claims],
+                },
+            )
             verdict = verify(state)
-            state.status = Status.COMPLETE if verdict.supported else Status.UNCERTAIN
-            if verdict.unsupported_claims:
-                state.final_answer += " Uncertain: verifier found unsupported claims."
+            state.final_answer = " ".join(
+                f"[{c.claim_id}] {c.text} (confidence={c.confidence:.2f})" for c in verdict.claims
+            )
+            state.status = Status.UNCERTAIN if verdict.unsupported_claims else Status.COMPLETE
         except Exception as exc:
             state.errors.append(str(exc))
             state.status = Status.FAILED

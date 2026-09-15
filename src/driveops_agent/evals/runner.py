@@ -1,29 +1,44 @@
 import json
-from pathlib import Path
 
 from ..agent import DriveOpsAgent
 
 
-def run_evals(root: Path) -> dict:
+def run_evals(root):
     cases = [
         json.loads(x) for x in (root / "evals/cases.jsonl").read_text(encoding="utf8").splitlines()
     ]
-    results = [DriveOpsAgent(root / "data", root / "reports").run(c["task"]) for c in cases]
-    success = sum(r.status.value == "complete" for r in results) / len(results)
-    tool_ok = sum(len(r.tool_calls) >= 4 for r in results) / len(results)
-    ev_ok = sum(bool(r.evidence) for r in results) / len(results)
-    unsupported = sum("Uncertain:" in (r.final_answer or "") for r in results) / len(results)
+    results = []
+    for c in cases:
+        s = DriveOpsAgent(root / "data", root / "reports").run(c["task"])
+        tools = {x.name for x in s.tool_calls}
+        claim_ev = {e for cl in s.claims for e in cl.evidence_ids}
+        sources = {e.evidence_id for e in s.evidence}
+        expected = set(c["expected_tools"])
+        forbidden = set(c["forbidden_tools"])
+        required = set(c["required_evidence"])
+        tool_ok = expected.issubset(tools) and not (tools & forbidden)
+        evidence_ok = required.issubset(claim_ev) and claim_ev.issubset(sources)
+        keyword_ok = any(
+            k.lower() in (s.final_answer or "").lower() for k in c["expected_claim_keywords"]
+        )
+        results.append((s, tool_ok, evidence_ok, keyword_ok))
+    n = len(results)
+    claims = [cl for s, *_ in results for cl in s.claims]
+    total = max(1, len(claims))
     report = {
-        "cases": len(cases),
-        "task_success_rate": success,
-        "tool_selection_accuracy": tool_ok,
-        "required_evidence_coverage": ev_ok,
-        "unsupported_claim_rate": unsupported,
-        "average_tool_calls": sum(len(r.tool_calls) for r in results) / len(results),
-        "average_steps": sum(r.step_count for r in results) / len(results),
+        "cases": n,
+        "task_success_rate": sum(x[3] for x in results) / n,
+        "tool_selection_accuracy": sum(x[1] for x in results) / n,
+        "evidence_coverage": sum(x[2] for x in results) / n,
+        "unsupported_claim_rate": sum(c.unsupported for c in claims) / total,
+        "hallucinated_source_rate": sum(
+            any(i not in {e.evidence_id for e in s.evidence} for i in c.evidence_ids)
+            for s, *_ in results
+            for c in s.claims
+        )
+        / total,
+        "average_tool_calls": sum(len(s.tool_calls) for s, *_ in results) / n,
     }
-    (root / "reports/v1_eval.json").write_text(json.dumps(report, indent=2), encoding="utf8")
-    (root / "reports/v1_eval.md").write_text(
-        "# V1 Evaluation\n\n" + "\n".join(f"- {k}: {v}" for k, v in report.items()), encoding="utf8"
-    )
+    (root / "reports/v1_eval.json").write_text(json.dumps(report, indent=2))
+    (root / "reports/v1_eval.md").write_text("\n".join(f"- {k}: {v}" for k, v in report.items()))
     return report

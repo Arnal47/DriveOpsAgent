@@ -53,3 +53,10 @@ V1 uses fixture data and deterministic rules, with no external vector DB, web ac
 CI: GitHub Actions runs offline lint, tests, evaluation, and CLI smoke checks on pushes and pull requests.
 
 CI trigger note: a documentation-only change can be used to verify repository Actions execution.
+## V1 engineering properties
+
+The Agent asks its provider for a structured, task-derived plan. Every plan step carries an objective, tool, arguments, expected observation, and status. Tool observations can revise the plan, and the mock provider supplies deterministic input-dependent plans and synthesis for offline CI. The OpenAI-compatible provider performs a real chat-completions HTTP request when explicitly selected.
+
+RAG chunks from multiple local documents are untrusted data. Retrieved chunks are attached as evidence and used in root-cause claims; injected content never changes the tool policy. Final answers contain claim IDs, evidence links, confidence, and uncertainty. The verifier checks each link, source identity, DTC support, numerical signal evidence, and conflicts.
+
+Evaluation compares actual tools to expected/forbidden tools, final-claim evidence links to required evidence, and expected root-cause keywords. It reports task success, tool-selection accuracy, evidence coverage, unsupported-claim rate, and hallucinated-source rate from real executions. CI enforces the configured quality thresholds; do not treat any historical percentage as a promise.

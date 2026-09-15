@@ -3,31 +3,29 @@ from pathlib import Path
 
 
 class OfflineRetriever:
-    """Small deterministic TF-IDF-like lexical retriever; documents remain untrusted data."""
-
     def __init__(self, root: Path):
         self.root = root
         self.chunks = self._chunks()
 
     def _chunks(self):
-        result = []
-        for p in [self.root / "validation_notes.md"]:
-            for i, chunk in enumerate(p.read_text(encoding="utf8").split("\n## ")):
-                result.append((p.name, f"{p.stem}-{i}", chunk))
-        return result
+        out = []
+        for p in sorted(self.root.glob("*.md")):
+            for i, c in enumerate(p.read_text(encoding="utf8").split("\n## ")):
+                out.append((p.name, f"{p.stem}-{i}", c))
+        return out
 
-    def search(self, query: str, limit: int = 3):
+    def search(self, query, limit=3):
         words = set(re.findall(r"[a-z0-9-]+", query.lower()))
         scored = []
-        for source, chunk_id, content in self.chunks:
+        for source, cid, content in self.chunks:
             score = len(words & set(re.findall(r"[a-z0-9-]+", content.lower()))) / max(
-                len(words), 1
+                1, len(words)
             )
             if score:
                 scored.append(
                     {
                         "source_id": source,
-                        "chunk_id": chunk_id,
+                        "chunk_id": cid,
                         "score": round(score, 3),
                         "content": content,
                     }

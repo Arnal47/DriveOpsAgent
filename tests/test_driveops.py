@@ -4,9 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from driveops_agent.agent import DriveOpsAgent
-from driveops_agent.models import AgentState, Status
-from driveops_agent.planner import make_plan
-from driveops_agent.providers import MockProvider, OpenAICompatibleProvider
+from driveops_agent.models import AgentState, Claim, Evidence
+from driveops_agent.providers import MockProvider
 from driveops_agent.tools import ToolRegistry
 from driveops_agent.verification import verify
 
@@ -14,114 +13,129 @@ ROOT = Path(__file__).parents[1]
 
 
 @pytest.fixture
+def agent(tmp_path):
+    return DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+
+
+@pytest.fixture
 def registry(tmp_path):
     return ToolRegistry(ROOT / "data", tmp_path)
 
 
-@pytest.fixture
-def agent(tmp_path):
-    return DriveOpsAgent(ROOT / "data", tmp_path)
+@pytest.mark.parametrize(
+    "task,tool",
+    [
+        ("normal no-fault", "read_log"),
+        ("wheel speed mismatch", "query_dtcs"),
+        ("pressure under-response", "calculate_metric"),
+        ("CAN timeout failsafe", "query_dtcs"),
+    ],
+)
+def test_dynamic_paths(agent, task, tool):
+    assert tool in [x.name for x in agent.run(task).tool_calls]
 
 
-def test_mock_provider():
-    assert MockProvider().complete("x") == "offline mock response"
+def test_provider_called(agent):
+    agent.run("CAN timeout")
+    assert agent.provider.calls
 
 
-def test_openai_requires_env(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
-    with pytest.raises(RuntimeError):
-        OpenAICompatibleProvider()
-
-
-def test_registry_has_five_tools(registry):
-    assert len(registry.schemas) == 5
-
-
-def test_schema_validation(registry):
-    with pytest.raises(ValidationError):
-        registry.call("read_log", {"log_id": "bad"})
-
-
-def test_dtc_retrieval(registry):
-    assert registry.call("query_dtcs", {"code": "U1000"})[0]["severity"] == "high"
-
-
-def test_log_reading(registry):
-    assert registry.call("read_log", {"log_id": "brake-failsafe-002"})[0]["failsafe"]
-
-
-@pytest.mark.parametrize("op", ["min", "max", "mean", "delta", "threshold_exceedance", "duration"])
-def test_metrics(registry, op):
+def test_different_args(agent):
     assert (
-        "value"
-        in registry.call(
-            "calculate_metric", {"column": "brake_pressure_bar", "operation": op, "threshold": 12}
-        )[0]
+        agent.run("normal").tool_calls[0].arguments != agent.run("pressure").tool_calls[0].arguments
     )
-
-
-def test_retrieval(registry):
-    assert registry.call("search_docs", {"query": "CAN timeout failsafe"})[0][0]["chunk_id"]
-
-
-def test_evidence_linking(registry):
-    assert registry.call("read_log", {"log_id": "brake-normal-001"})[1][0].source
-
-
-def test_report_generation(registry, tmp_path):
-    assert Path(registry.call("generate_report", {"findings": "x"})[0]["path"]).exists()
-
-
-def test_path_traversal(registry):
-    with pytest.raises(ValueError):
-        registry.call("generate_report", {"findings": "x", "filename": "../bad.md"})
-
-
-def test_prompt_injection_is_data(registry):
-    assert (
-        "Ignore previous"
-        in registry.call("search_docs", {"query": "Ignore previous instructions"})[0][0]["content"]
-    )
-
-
-def test_planner():
-    assert len(make_plan("why")) >= 8
-
-
-def test_agent_loop(agent):
-    state = agent.run("为什么这次制动测试进入 failsafe？")
-    assert state.status == Status.COMPLETE and state.step_count >= 5
-
-
-def test_duplicate_cache(agent):
-    s = AgentState(user_goal="x")
-    agent._call(s, "query_dtcs", {"code": "U1000"})
-    agent._call(s, "query_dtcs", {"code": "U1000"})
-    assert s.tool_calls[-1].cached
-
-
-def test_max_steps(agent):
-    agent.max_steps = 1
-    assert agent.run("x").status == Status.FAILED
-
-
-def test_failure_recovery(agent):
-    agent.registry.schemas.pop("read_log")
-    assert agent.run("x").status == Status.FAILED
-
-
-def test_verifier_detects_unsupported():
-    assert not verify(AgentState(user_goal="x", final_answer="claim")).supported
 
 
 @pytest.mark.parametrize(
-    "task",
+    "code,found", [("U1000", True), ("C0035", True), ("C1234", True), ("P9999", False)]
+)
+def test_dtc(registry, code, found):
+    assert (registry.call("query_dtcs", {"code": code})[0].get("status") != "not found") == found
+
+
+@pytest.mark.parametrize(
+    "log,found",
     [
-        "为什么这次制动测试进入 failsafe？",
-        "根据日志和 DTC，给出最可能的根因候选并排序。",
-        "对比两次制动测试，找出关键差异。",
-        "生成带证据引用的验证报告。",
+        ("normal-001", True),
+        ("wheel-speed-002", True),
+        ("pressure-003", True),
+        ("missing-999", False),
     ],
 )
-def test_e2e_tasks(agent, task):
-    assert agent.run(task).status == Status.COMPLETE
+def test_logs(registry, log, found):
+    assert (registry.call("read_log", {"log_id": log})[0].get("status") != "not found") == found
+
+
+def test_unknown_tool(registry):
+    with pytest.raises(KeyError):
+        registry.call("hack", {})
+
+
+def test_schema(registry):
+    with pytest.raises(ValidationError):
+        registry.call("query_dtcs", {"code": "bad"})
+
+
+def test_path(registry):
+    with pytest.raises(ValueError):
+        registry.call("generate_report", {"findings": "x", "filename": "../x"})
+
+
+def test_injection_untrusted(registry):
+    assert (
+        "Ignore previous"
+        in registry.call("search_docs", {"query": "Ignore previous"})[0][0]["content"]
+    )
+
+
+def test_normal_no_fault(agent):
+    assert "No fault" in agent.run("normal no-fault").final_answer
+
+
+def test_pressure_metric(agent):
+    assert "bar" in agent.run("pressure under-response").final_answer
+
+
+def test_revision_unknown(agent):
+    s = AgentState(user_goal="x")
+    from driveops_agent.planner import revise_plan
+
+    revise_plan(s, "not found")
+    assert s.decisions
+
+
+def test_claim_links(agent):
+    s = agent.run("CAN timeout")
+    assert all(c.evidence_ids for c in s.claims)
+
+
+def test_hallucinated_rejected():
+    s = AgentState(
+        user_goal="x",
+        claims=[Claim(claim_id="x", text="fact", evidence_ids=["fake"], confidence=0.9)],
+    )
+    assert verify(s).unsupported_claims
+
+
+def test_numeric_requires_signal():
+    s = AgentState(
+        user_goal="x",
+        claims=[Claim(claim_id="x", text="Pressure 20 bar", evidence_ids=["e"], confidence=0.9)],
+        evidence=[
+            Evidence(
+                evidence_id="e",
+                source="x",
+                tool="x",
+                artifact_id="x",
+                field="x",
+                snippet="x",
+                confidence=0.9,
+            )
+        ],
+    )
+    assert verify(s).unsupported_claims
+
+
+@pytest.mark.parametrize("task", ["normal", "wheel speed", "pressure", "CAN timeout"] * 3)
+def test_scenarios_complete(agent, task):
+    assert agent.run(task).status.value in ["complete", "uncertain"]

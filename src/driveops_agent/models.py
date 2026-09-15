@@ -23,6 +23,23 @@ class Evidence(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class Claim(BaseModel):
+    claim_id: str
+    text: str
+    evidence_ids: list[str] = []
+    confidence: float = Field(ge=0, le=1)
+    uncertain: bool = False
+    unsupported: bool = False
+
+
+class PlanStep(BaseModel):
+    objective: str
+    tool_name: str
+    arguments: dict[str, Any]
+    expected_observation: str
+    status: str = "pending"
+
+
 class ToolCall(BaseModel):
     name: str
     arguments: dict[str, Any]
@@ -32,12 +49,13 @@ class ToolCall(BaseModel):
 
 class AgentState(BaseModel):
     user_goal: str
-    current_plan: list[str] = []
+    current_plan: list[PlanStep] = []
     completed_steps: list[str] = []
     tool_calls: list[ToolCall] = []
     observations: list[str] = []
     evidence: list[Evidence] = []
     errors: list[str] = []
+    claims: list[Claim] = []
     final_answer: str | None = None
     status: Status = Status.RUNNING
     step_count: int = 0
@@ -45,7 +63,6 @@ class AgentState(BaseModel):
 
 
 class VerificationResult(BaseModel):
-    supported: bool
+    claims: list[Claim]
     unsupported_claims: list[str] = []
     conflicts: list[str] = []
-    incomplete_plan: bool = False
