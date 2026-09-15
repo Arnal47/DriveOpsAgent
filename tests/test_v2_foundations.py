@@ -186,3 +186,12 @@ def test_agent_memory_hit_and_provenance(tmp_path):
     events = [json.loads(x)["event_type"] for x in agent.trace.path.read_text().splitlines()]
     assert first.run_id != second.run_id and "memory_hit" in events
     assert all(e.provenance == "current" for e in second.evidence)
+
+
+def test_current_evidence_overrides_stale_memory(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    agent.memory.save("old", "stale CAN", [{"evidence_id": "old", "source": "memory"}])
+    state = agent.run("conflict CAN timeout")
+    assert state.status.value == "needs_review"
+    assert all(e.provenance == "current" for e in state.evidence)
+    assert "current evidence" in state.decisions[0]
