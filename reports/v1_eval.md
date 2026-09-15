@@ -1,0 +1,7 @@
+- cases: 16
+- task_success_rate: 1.0
+- tool_selection_accuracy: 1.0
+- evidence_coverage: 1.0
+- unsupported_claim_rate: 0.0
+- hallucinated_source_rate: 0.0
+- average_tool_calls: 3.1875

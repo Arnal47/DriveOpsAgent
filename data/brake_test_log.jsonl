@@ -1,0 +1,4 @@
+{"log_id":"normal-001","scenario":"normal/no-fault","events":["brake request accepted","deceleration achieved"],"dtcs":[],"failsafe":false}
+{"log_id":"wheel-speed-002","scenario":"wheel-speed mismatch","events":["wheel-speed mismatch C0035","diagnostic warning"],"dtcs":["C0035"],"failsafe":false}
+{"log_id":"pressure-003","scenario":"pressure under-response","events":["pressure gap exceeds 20 bar","C1234 recorded","failsafe activation"],"dtcs":["C1234"],"failsafe":true}
+{"log_id":"can-timeout-004","scenario":"CAN timeout","events":["CAN timeout U1000","failsafe activation"],"dtcs":["U1000"],"failsafe":true}
