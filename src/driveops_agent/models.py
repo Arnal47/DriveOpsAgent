@@ -51,6 +51,7 @@ class ToolCall(BaseModel):
 
 
 class AgentState(BaseModel):
+    run_id: str | None = None
     user_goal: str
     current_plan: list[PlanStep] = []
     completed_steps: list[str] = []

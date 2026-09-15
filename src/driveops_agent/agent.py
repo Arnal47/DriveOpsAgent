@@ -1,9 +1,12 @@
+import json
 from pathlib import Path
 
+from .memory.store import MemoryStore
 from .models import AgentState, Claim, Status, ToolCall
 from .planner import make_plan, revise_plan
 from .providers import MockProvider
 from .tools import ToolRegistry
+from .tracing import Trace
 from .verification import verify
 
 
@@ -13,6 +16,8 @@ class DriveOpsAgent:
         self.provider = provider or MockProvider()
         self.max_steps = max_steps
         self.cache = {}
+        self.memory = MemoryStore(reports_dir / "driveops_memory.sqlite")
+        self.trace = None
 
     def _call(self, s, n, a):
         if s.step_count >= self.max_steps:
@@ -26,13 +31,19 @@ class DriveOpsAgent:
             self.cache[k] = (v, e)
             cached = False
         s.tool_calls.append(ToolCall(name=n, arguments=a, cached=cached))
+        if self.trace:
+            self.trace.emit(
+                "tool_call", tool=n, arguments=a, evidence_ids=[x.evidence_id for x in e]
+            )
         s.evidence += e
         s.step_count += 1
         s.observations.append(f"{n}: {v}")
         return v
 
     def run(self, task):
-        s = AgentState(user_goal=task)
+        self.trace = Trace(self.registry.reports_dir / "traces")
+        s = AgentState(run_id=self.trace.run_id, user_goal=task)
+        self.trace.emit("run_start")
         try:
             intent, plan = make_plan(
                 task,
@@ -113,4 +124,16 @@ class DriveOpsAgent:
         except Exception as e:
             s.errors.append(str(e))
             s.status = Status.FAILED
+        if self.trace:
+            self.trace.emit(
+                "run_end",
+                success=s.status != Status.FAILED,
+                evidence_ids=[e.evidence_id for e in s.evidence],
+            )
+            self.memory.save(
+                s.run_id,
+                json.dumps(self.trace.summary()),
+                [e.model_dump() for e in s.evidence],
+                s.decisions,
+            )
         return s
