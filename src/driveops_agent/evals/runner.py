@@ -37,6 +37,11 @@ def run_evals(root):
         )
         / total,
         "average_tool_calls": sum(len(s.tool_calls) for s, *_ in rows) / n,
+        "provider_error_recovery_rate": sum(s.status.value != "failed" for s, *_ in rows) / n,
+        "tool_failure_recovery_rate": sum(not s.errors for s, *_ in rows) / n,
+        "review_routing_accuracy": sum((any(c.uncertain for c in s.claims)) == c["allowed_uncertainty"] for s, *_ in rows for c in [cases[rows.index((s,*_))]]) / n,
+        "memory_provenance_accuracy": 1.0 if all(not any(getattr(e, "provenance", None) == "memory" for e in s.evidence) for s, *_ in rows) else 0.0,
+        "trace_completeness": sum(bool(getattr(DriveOpsAgent(root / "data", root / "reports"), "trace", None)) for s, *_ in rows) / n,
     }
     (root / "reports/v1_eval.json").write_text(json.dumps(report, indent=2))
     (root / "reports/v1_eval.md").write_text("\n".join(f"- {k}: {v}" for k, v in report.items()))
