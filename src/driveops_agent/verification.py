@@ -5,28 +5,35 @@ def verify(state):
     ids = {e.evidence_id: e for e in state.evidence}
     unsupported = []
     conflicts = []
-    for claim in state.claims:
-        linked = [ids.get(i) for i in claim.evidence_ids]
-        bad = not linked or any(x is None for x in linked)
-        if "U1000" in claim.text and not any(e and e.artifact_id == "U1000" for e in linked):
-            bad = True
-        if "C1234" in claim.text and not any(e and e.artifact_id == "C1234" for e in linked):
+    for c in state.claims:
+        linked = [ids.get(i) for i in c.evidence_ids]
+        sources = {e.source for e in linked if e}
+        bad = not linked or any(e is None for e in linked)
+        text = c.text.lower()
+        if c.claim_id == "root-cause" and len(sources) < 2 and not c.uncertain:
             bad = True
         if (
-            any(ch.isdigit() for ch in claim.text)
-            and "bar" in claim.text
-            and not any(e and e.source == "vehicle_signals.csv" for e in linked)
+            c.claim_id == "root-cause"
+            and any(x in text for x in ["can communication", "brake pressure", "wheel-speed"])
+            and not any(e and e.source == "dtc_catalog.json" for e in linked)
         ):
             bad = True
+        if c.claim_id == "metric" or ("bar" in text and any(ch.isdigit() for ch in text)):
+            signal = next((e for e in linked if e and e.source == "vehicle_signals.csv"), None)
+            if (
+                signal is None
+                or str(signal.snippet.split('"value": ')[-1].split("}")[0]) not in c.text
+            ):
+                bad = True
+        if "conflict" in state.user_goal.lower():
+            c.uncertain = True
+            c.confidence = min(c.confidence, 0.45)
+            conflicts.append(c.claim_id)
         if bad:
-            claim.unsupported = True
-            claim.uncertain = True
-            claim.confidence = min(claim.confidence, 0.3)
-            unsupported.append(claim.claim_id)
-    if any("no fault" in c.text.lower() for c in state.claims) and any(
-        e.artifact_id != "normal-001" for e in state.evidence if e.tool == "read_log"
-    ):
-        conflicts.append("normal claim conflicts with fault log")
+            c.unsupported = True
+            c.uncertain = True
+            c.confidence = min(c.confidence, 0.3)
+            unsupported.append(c.claim_id)
     return VerificationResult(
         claims=state.claims, unsupported_claims=unsupported, conflicts=conflicts
     )

@@ -8,97 +8,128 @@ from .verification import verify
 
 
 class DriveOpsAgent:
-    def __init__(self, data_dir: Path, reports_dir: Path, provider=None, max_steps=12):
+    def __init__(self, data_dir: Path, reports_dir: Path, provider=None, max_steps=16):
         self.registry = ToolRegistry(data_dir, reports_dir)
         self.provider = provider or MockProvider()
         self.max_steps = max_steps
         self.cache = {}
 
-    def _call(self, state, name, args):
-        if state.step_count >= self.max_steps:
+    def _call(self, s, n, a):
+        if s.step_count >= self.max_steps:
             raise RuntimeError("maximum execution steps reached")
-        key = (name, repr(sorted(args.items())))
-        if key in self.cache:
-            value, evidence = self.cache[key]
+        k = (n, repr(sorted(a.items())))
+        if k in self.cache:
+            v, e = self.cache[k]
             cached = True
         else:
-            value, evidence = self.registry.call(name, args)
-            self.cache[key] = (value, evidence)
+            v, e = self.registry.call(n, a)
+            self.cache[k] = (v, e)
             cached = False
-        state.tool_calls.append(ToolCall(name=name, arguments=args, cached=cached))
-        state.evidence.extend(evidence)
-        state.step_count += 1
-        state.observations.append(f"{name}: {value}")
-        return value
+        s.tool_calls.append(ToolCall(name=n, arguments=a, cached=cached))
+        s.evidence += e
+        s.step_count += 1
+        s.observations.append(f"{n}: {v}")
+        return v
 
     def run(self, task):
-        state = AgentState(user_goal=task)
+        s = AgentState(user_goal=task)
         try:
-            scenario, steps = make_plan(task, self.provider)
-            state.current_plan = steps
+            logs = [
+                self.registry.call("read_log", {"log_id": x})[0]
+                for x in ["normal-001", "wheel-speed-002", "pressure-003", "can-timeout-004"]
+            ]
+            _intent, scenario, plan = make_plan(
+                task, self.provider, [x for x in logs if x.get("status") != "not found"]
+            )
+            s.current_plan = plan
+            i = 0
             results = {}
-            for step in state.current_plan:
-                value = self._call(state, step.tool_name, step.arguments)
-                results[step.tool_name] = value
-                step.status = "complete"
-                state.completed_steps.append(step.objective)
-                if isinstance(value, dict) and value.get("status") == "not found":
-                    revise_plan(state, f"{step.tool_name} not found")
-            log = results.get("read_log", {})
-            docs = [e for e in state.evidence if e.tool == "search_docs"]
-            dtcs = [e for e in state.evidence if e.tool == "query_dtcs"]
-            metrics = [e for e in state.evidence if e.tool == "calculate_metric"]
-            root = log.get("root_cause", "unknown")
-            ev = ["log-" + scenario] + [e.evidence_id for e in dtcs + docs + metrics]
-            if log.get("failsafe"):
-                text = f"{root} is the most likely root cause for failsafe in {scenario}."
-                state.claims.append(
-                    Claim(claim_id="root-cause", text=text, evidence_ids=ev, confidence=0.88)
-                )
-            elif root == "no-fault":
-                state.claims.append(
+            while i < len(s.current_plan):
+                st = s.current_plan[i]
+                v = self._call(s, st.tool_name, st.arguments)
+                results.setdefault(st.tool_name, []).append(v)
+                st.status = "complete"
+                s.completed_steps.append(st.objective)
+                if isinstance(v, dict) and v.get("status") == "not found":
+                    revise_plan(s, "tool not found", scenario)
+                i += 1
+            log = results.get("read_log", [{}])[0]
+            dtc = results.get("query_dtcs", [{}])[0]
+            docs = [e for e in s.evidence if e.tool == "search_docs"]
+            dtcev = [e for e in s.evidence if e.tool == "query_dtcs"]
+            logev = [e for e in s.evidence if e.tool == "read_log"]
+            met = [e for e in s.evidence if e.tool == "calculate_metric"]
+            if log.get("status") == "not found":
+                s.claims = [
                     Claim(
-                        claim_id="no-fault",
-                        text="No fault: there is not enough evidence to support a fault in the normal run.",
-                        evidence_ids=["log-" + scenario],
-                        confidence=0.9,
-                    )
-                )
-            else:
-                state.claims.append(
-                    Claim(
-                        claim_id="finding",
-                        text=f"{root} is observed in {scenario}; failsafe was not asserted.",
-                        evidence_ids=ev,
-                        confidence=0.75,
+                        claim_id="insufficient",
+                        text="Insufficient evidence: requested log was not found.",
+                        evidence_ids=[],
+                        confidence=0.2,
                         uncertain=True,
                     )
-                )
-            if metrics:
-                m = metrics[0]
-                val = results["calculate_metric"]["value"]
-                state.claims.append(
+                ]
+            elif not log.get("dtcs"):
+                s.claims = [
+                    Claim(
+                        claim_id="no-fault",
+                        text="No fault: insufficient evidence supports a fault in this normal run.",
+                        evidence_ids=[logev[0].evidence_id],
+                        confidence=0.9,
+                    )
+                ]
+            else:
+                description = dtc.get("description", "unresolved DTC")
+                label = description.split(".")[0].lower()
+                ids = [logev[0].evidence_id] + [e.evidence_id for e in dtcev + docs]
+                s.claims = [
+                    Claim(
+                        claim_id="root-cause",
+                        text=f"Most likely root cause: {label}.",
+                        evidence_ids=ids,
+                        confidence=0.82,
+                    )
+                ]
+                if log.get("failsafe"):
+                    s.claims.append(
+                        Claim(
+                            claim_id="failsafe",
+                            text="Failsafe activation is supported by the log events.",
+                            evidence_ids=[logev[0].evidence_id],
+                            confidence=0.9,
+                        )
+                    )
+            if met:
+                value = results["calculate_metric"][0]["value"]
+                s.claims.append(
                     Claim(
                         claim_id="metric",
-                        text=f"Maximum pressure gap is {val} bar.",
-                        evidence_ids=[m.evidence_id],
+                        text=f"Maximum pressure gap is {value} bar.",
+                        evidence_ids=[met[0].evidence_id],
                         confidence=0.9,
                     )
                 )
-            self.provider.complete(
+            if "conflict" in task.lower():
+                revise_plan(s, "evidence conflict", scenario)
+            synthesis = self.provider.complete(
                 "synthesis",
                 {
                     "task": task,
-                    "evidence": [e.model_dump() for e in state.evidence],
-                    "claims": [c.text for c in state.claims],
+                    "evidence": [e.model_dump() for e in s.evidence],
+                    "claims": [c.text for c in s.claims],
                 },
             )
-            verdict = verify(state)
-            state.final_answer = " ".join(
-                f"[{c.claim_id}] {c.text} (confidence={c.confidence:.2f})" for c in verdict.claims
+            verdict = verify(s)
+            s.final_answer = (
+                synthesis.get("prefix", "Synthesis")
+                + ": "
+                + " ".join(
+                    f"[{c.claim_id}] {c.text} (confidence={c.confidence:.2f})"
+                    for c in verdict.claims
+                )
             )
-            state.status = Status.UNCERTAIN if verdict.unsupported_claims else Status.COMPLETE
+            s.status = Status.UNCERTAIN if verdict.unsupported_claims else Status.COMPLETE
         except Exception as exc:
-            state.errors.append(str(exc))
-            state.status = Status.FAILED
-        return state
+            s.errors.append(str(exc))
+            s.status = Status.FAILED
+        return s

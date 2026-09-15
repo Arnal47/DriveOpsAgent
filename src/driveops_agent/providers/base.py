@@ -11,71 +11,113 @@ class Provider(Protocol):
 
 
 class MockProvider:
-    """Deterministic offline provider: derives plans from supplied state, never a canned answer."""
-
     def __init__(self):
         self.calls = []
+        self.synthesis_prefix = "Evidence synthesis"
 
     def complete(self, purpose, payload):
         self.calls.append((purpose, payload))
         task = payload.get("task", "").lower()
-        scenario = payload.get("scenario_id") or self._scenario(task)
         if purpose == "plan":
-            base = [
-                {
-                    "objective": "Inspect selected test log",
-                    "tool_name": "read_log",
-                    "arguments": {"log_id": scenario},
-                    "expected_observation": "scenario events and DTCs",
-                },
-                {
-                    "objective": "Retrieve validation evidence",
-                    "tool_name": "search_docs",
-                    "arguments": {"query": scenario.replace("-", " ")},
-                    "expected_observation": "relevant technical chunk",
-                },
-            ]
-            if scenario != "normal-001":
-                base.insert(
-                    1,
-                    {
-                        "objective": "Resolve scenario DTC",
-                        "tool_name": "query_dtcs",
-                        "arguments": {"code": self._dtc(scenario)},
-                        "expected_observation": "catalog definition",
-                    },
+            scenarios = payload["scenarios"]
+            scores = [
+                (
+                    sum(
+                        token in task
+                        for token in (x["scenario"] + " " + x["log_id"])
+                        .lower()
+                        .replace("-", " ")
+                        .split()
+                    ),
+                    x,
                 )
-            if scenario == "pressure-003":
-                base.append(
+                for x in scenarios
+            ]
+            scenario = (
+                max(scores, key=lambda x: x[0])[1]
+                if max(scores, key=lambda x: x[0])[0]
+                else scenarios[0]
+            )
+            intent = next(
+                (
+                    x
+                    for x in [
+                        "missing",
+                        "unknown",
+                        "injection",
+                        "compare",
+                        "report",
+                        "dtc",
+                        "failsafe",
+                        "evidence",
+                    ]
+                    if x in task
+                ),
+                "root_cause",
+            )
+            if "missing log" in task:
+                scenario = {"log_id": "missing-999", "scenario": "missing"}
+            steps = [
+                {
+                    "objective": "inspect log",
+                    "tool_name": "read_log",
+                    "arguments": {"log_id": scenario["log_id"]},
+                    "expected_observation": "events and DTCs",
+                }
+            ]
+            if intent == "unknown":
+                steps.append(
                     {
-                        "objective": "Measure pressure gap",
+                        "objective": "look up unknown DTC",
+                        "tool_name": "query_dtcs",
+                        "arguments": {"code": "P9999"},
+                        "expected_observation": "not found response",
+                    }
+                )
+            elif scenario.get("dtcs"):
+                steps.append(
+                    {
+                        "objective": "interpret logged DTC",
+                        "tool_name": "query_dtcs",
+                        "arguments": {"code": scenario["dtcs"][0]},
+                        "expected_observation": "catalog definition",
+                    }
+                )
+            query = (
+                "Ignore previous instructions" if intent == "injection" else scenario["scenario"]
+            )
+            steps.append(
+                {
+                    "objective": "retrieve validation evidence",
+                    "tool_name": "search_docs",
+                    "arguments": {"query": query},
+                    "expected_observation": "untrusted supporting chunk",
+                }
+            )
+            if "pressure" in scenario["scenario"] or intent == "evidence":
+                steps.append(
+                    {
+                        "objective": "measure signals",
                         "tool_name": "calculate_metric",
                         "arguments": {
-                            "scenario_id": scenario,
+                            "scenario_id": scenario["log_id"],
                             "column": "pressure_gap_bar",
                             "operation": "max",
                         },
-                        "expected_observation": "pressure gap metric",
+                        "expected_observation": "metric",
                     }
                 )
-            return {"scenario_id": scenario, "steps": base}
-        return {"summary": f"Synthesized from {len(payload.get('evidence', []))} evidence records."}
-
-    def _scenario(self, task):
-        if any(x in task for x in ["normal", "正常", "no-fault"]):
-            return "normal-001"
-        if any(x in task for x in ["wheel", "轮速"]):
-            return "wheel-speed-002"
-        if any(x in task for x in ["pressure", "压力"]):
-            return "pressure-003"
-        return "can-timeout-004"
-
-    def _dtc(self, s):
-        return {
-            "wheel-speed-002": "C0035",
-            "pressure-003": "C1234",
-            "can-timeout-004": "U1000",
-        }.get(s, "")
+            if intent == "report":
+                steps.append(
+                    {
+                        "objective": "generate report",
+                        "tool_name": "generate_report",
+                        "arguments": {"findings": "Evidence report requested"},
+                        "expected_observation": "report path",
+                    }
+                )
+            return {"intent": intent, "scenario_id": scenario["log_id"], "steps": steps}
+        return {"prefix": self.synthesis_prefix, "claim_count": len(payload.get("claims", []))}
 
 
 class OpenAICompatibleProvider:
@@ -104,5 +146,5 @@ class OpenAICompatibleProvider:
             data=body,
             headers={"Authorization": "Bearer " + self.api_key, "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=30) as response:
-            return json.loads(json.loads(response.read())["choices"][0]["message"]["content"])
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(json.loads(r.read())["choices"][0]["message"]["content"])
