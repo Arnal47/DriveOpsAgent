@@ -14,3 +14,4 @@ jobs:
       - run: python -m driveops_agent.cli eval
       - run: python -c "import json; r=json.load(open('reports/v1_eval.json')); assert r['task_success_rate'] >= .9 and r['tool_selection_accuracy'] >= .9 and r['evidence_coverage'] >= .9 and r['unsupported_claim_rate'] <= .05 and r['hallucinated_source_rate'] == 0, r"
       - run: python -m driveops_agent.cli run --task 'why CAN timeout enters failsafe' --provider mock
+      - run: python -c "import json; r=json.load(open('reports/v1_eval.json')); assert r['review_routing_accuracy']>=.9 and r['memory_provenance_accuracy']>=.9 and r['trace_completeness']==1.0 and r['provider_error_recovery_rate']>=.9 and r['tool_failure_recovery_rate']>=.9, r"
