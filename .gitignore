@@ -2,4 +2,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.ruff_cache/reports/*.sqlite
+reports/traces/*.jsonl
 .ruff_cache/
+reports/*.sqlite
+reports/traces/*.jsonl
+reports/eval_runs/
+reports/**/driveops_memory.sqlite
+reports/**/traces/*.jsonl

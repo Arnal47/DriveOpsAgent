@@ -1,7 +1,14 @@
-- cases: 16
+- cases: 31
+- unique_cases: 31
+- v1_regression_success: 1.0
+- v2_task_success: 1.0
 - task_success_rate: 1.0
 - tool_selection_accuracy: 1.0
 - evidence_coverage: 1.0
 - unsupported_claim_rate: 0.0
 - hallucinated_source_rate: 0.0
-- average_tool_calls: 3.1875
+- provider_error_recovery_rate: 1.0
+- tool_failure_recovery_rate: 1.0
+- review_routing_accuracy: 1.0
+- memory_provenance_accuracy: 1.0
+- trace_completeness: 1.0

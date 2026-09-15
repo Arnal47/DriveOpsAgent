@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class Status(str, Enum):
+    NEEDS_REVIEW = "needs_review"
     RUNNING = "running"
     COMPLETE = "complete"
     UNCERTAIN = "uncertain"
@@ -22,6 +23,7 @@ class Evidence(BaseModel):
     snippet: str
     confidence: float = Field(ge=0, le=1)
     value: float | None = None
+    provenance: str = "current"
 
 
 class Claim(BaseModel):
@@ -30,6 +32,7 @@ class Claim(BaseModel):
     evidence_ids: list[str] = []
     confidence: float = Field(ge=0, le=1)
     value: float | None = None
+    provenance: str = "current"
     uncertain: bool = False
     unsupported: bool = False
 
@@ -50,6 +53,7 @@ class ToolCall(BaseModel):
 
 
 class AgentState(BaseModel):
+    run_id: str | None = None
     user_goal: str
     current_plan: list[PlanStep] = []
     completed_steps: list[str] = []

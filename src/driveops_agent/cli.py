@@ -15,6 +15,14 @@ def main():
     r.add_argument("--provider", choices=["mock", "openai-compatible"], default="mock")
     s.add_parser("ingest")
     s.add_parser("eval")
+    review = s.add_parser("review")
+    review.add_argument("run_id")
+    decision = review.add_mutually_exclusive_group(required=True)
+    decision.add_argument("--approve", action="store_true")
+    decision.add_argument("--reject", action="store_true")
+    memory = s.add_parser("memory")
+    memory.add_argument("action", choices=["list", "show", "clear"])
+    memory.add_argument("run_id", nargs="?")
     a = p.parse_args()
     root = Path(__file__).resolve().parents[2]
     if a.cmd == "ingest":
@@ -27,6 +35,20 @@ def main():
                 }
             )
         )
+        return
+    if a.cmd == "memory":
+        store = DriveOpsAgent(root / "data", root / "reports").memory
+        if a.action == "clear":
+            store.clear()
+            print("cleared")
+        elif a.action == "show":
+            print(json.dumps(store.details(a.run_id)))
+        else:
+            print(json.dumps(store.list()))
+        return
+    if a.cmd == "review":
+        state = DriveOpsAgent(root / "data", root / "reports").review(a.run_id, a.approve)
+        print(json.dumps(state.model_dump(mode="json"), ensure_ascii=False, indent=2))
         return
     if a.cmd == "eval":
         print(json.dumps(run_evals(root), indent=2))
