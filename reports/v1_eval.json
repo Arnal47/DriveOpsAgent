@@ -9,5 +9,5 @@
   "tool_failure_recovery_rate": 1.0,
   "review_routing_accuracy": 1.0,
   "memory_provenance_accuracy": 1.0,
-  "trace_completeness": 1.0
+  "trace_completeness": 0.9166666666666666
 }
