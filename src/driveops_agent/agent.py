@@ -73,6 +73,7 @@ class DriveOpsAgent:
                     text=c["text"],
                     evidence_ids=c["evidence_ids"],
                     confidence=c["confidence"],
+                    value=c.get("value"),
                     uncertain="conflict" in task.lower(),
                 )
                 for i, c in enumerate(out.get("claims", []), 1)

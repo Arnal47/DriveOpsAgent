@@ -136,6 +136,7 @@ class ToolRegistry:
                 field=a.column,
                 snippet=json.dumps(result),
                 confidence=0.9,
+                value=value,
             )
         ]
 

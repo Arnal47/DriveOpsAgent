@@ -42,6 +42,11 @@ class MockProvider:
                 if "injection" in task
                 else "root"
             )
+            if "unknown" in task:
+                intent = "unknown"
+            if "missing log" in task:
+                intent = "missing"
+                pick = "missing-999"
             steps = [
                 {
                     "objective": "inspect target log",
@@ -50,6 +55,15 @@ class MockProvider:
                     "expected_observation": "events, DTCs, failsafe",
                 }
             ]
+            if intent == "unknown":
+                steps.append(
+                    {
+                        "objective": "query unknown DTC",
+                        "tool_name": "query_dtcs",
+                        "arguments": {"code": "P9999"},
+                        "expected_observation": "not found",
+                    }
+                )
             if intent == "compare":
                 steps.append(
                     {
@@ -125,6 +139,7 @@ class MockProvider:
                     "text": f"Signal metric measured: {metrics[0].get('value')} bar.",
                     "evidence_ids": [metrics[0]["evidence_id"]],
                     "confidence": 0.9,
+                    "value": metrics[0].get("value"),
                     "kind": "numeric",
                 }
             )

@@ -139,3 +139,71 @@ def test_numeric_requires_signal():
 @pytest.mark.parametrize("task", ["normal", "wheel speed", "pressure", "CAN timeout"] * 3)
 def test_scenarios_complete(agent, task):
     assert agent.run(task).status.value in ["complete", "uncertain"]
+
+
+class AlternateSynthesisProvider(MockProvider):
+    def complete(self, purpose, payload):
+        result = super().complete(purpose, payload)
+        if purpose == "synthesis":
+            return {
+                "prefix": "Altered synthesis",
+                "claims": [
+                    {
+                        "text": "Provider-selected conclusion.",
+                        "evidence_ids": [payload["evidence"][0]["evidence_id"]],
+                        "confidence": 0.7,
+                    }
+                ],
+            }
+        return result
+
+
+def test_metric_mutation_changes_final_answer(tmp_path):
+    data = tmp_path / "data"
+    import shutil
+
+    shutil.copytree(ROOT / "data", data)
+    signals = data / "vehicle_signals.csv"
+    signals.write_text(signals.read_text().replace("pressure-003,2,28,1", "pressure-003,2,99,1"))
+    answer = (
+        DriveOpsAgent(data, tmp_path, MockProvider()).run("pressure under-response").final_answer
+    )
+    assert "99.0 bar" in answer
+
+
+def test_synthesis_mutation_changes_final_answer(tmp_path):
+    answer = (
+        DriveOpsAgent(ROOT / "data", tmp_path, AlternateSynthesisProvider())
+        .run("CAN timeout")
+        .final_answer
+    )
+    assert "Provider-selected conclusion." in answer
+
+
+def test_compare_executes_two_logs_and_links_both(tmp_path):
+    state = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider()).run("compare CAN timeout")
+    logs = [call for call in state.tool_calls if call.name == "read_log"]
+    assert len(logs) >= 2 and logs[0].arguments != logs[1].arguments
+    difference = next(claim for claim in state.claims if "Comparison" in claim.text)
+    assert {"log-can-timeout-004", "log-normal-001"}.issubset(difference.evidence_ids)
+
+
+def test_report_markdown_contains_claim_evidence_and_uncertainty(tmp_path):
+    state = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider()).run("report CAN timeout")
+    report = (tmp_path / "driveops_report.md").read_text()
+    assert state.claims[0].text in report
+    assert state.claims[0].evidence_ids[0] in report
+    assert "Uncertainty:" in report
+
+
+def test_unknown_dtc_calls_p9999(tmp_path):
+    state = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider()).run("unknown DTC")
+    assert any(c.name == "query_dtcs" and c.arguments["code"] == "P9999" for c in state.tool_calls)
+    assert any("not found" in x for x in state.observations)
+
+
+def test_missing_log_calls_missing_id(tmp_path):
+    state = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider()).run("missing log evidence")
+    assert any(
+        c.name == "read_log" and c.arguments["log_id"] == "missing-999" for c in state.tool_calls
+    )
