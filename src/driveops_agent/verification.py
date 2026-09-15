@@ -10,10 +10,11 @@ def verify(state):
         failed = not linked or any(e is None for e in linked)
         if "Most likely" in claim.text and len(sources) < 2 and not claim.uncertain:
             failed = True
-        if claim.value is None and "bar" in claim.text.lower() and not any(e and e.source == "vehicle_signals.csv" for e in linked):`n            failed = True`n        if claim.value is not None:
-            metric_values = [e.value for e in linked if e and e.source == "vehicle_signals.csv"]
-            if metric_values != [claim.value]:
-                failed = True
+        metric_values = [e.value for e in linked if e and e.source == "vehicle_signals.csv"]
+        if claim.value is not None and metric_values != [claim.value]:
+            failed = True
+        if claim.value is None and "bar" in claim.text.lower() and not metric_values:
+            failed = True
         if claim.uncertain:
             claim.confidence = min(claim.confidence, 0.45)
             conflicts.append(claim.claim_id)
