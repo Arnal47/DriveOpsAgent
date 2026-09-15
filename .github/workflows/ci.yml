@@ -38,4 +38,5 @@ jobs:
         run: python -m driveops_agent.cli run --task '为什么这次制动测试进入 failsafe？' --provider mock
       - name: Bootstrap validation
         if: ${{ hashFiles('pyproject.toml') == '' }}
-        run: echo "CI bootstrap: project files not present yet; workflow installation validated."
+        run: |
+          echo "CI bootstrap: project files not present yet; workflow installation validated."
