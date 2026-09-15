@@ -95,6 +95,7 @@ def test_provider_timeout_recovery_through_agent(tmp_path):
     provider = FlakySynthesisProvider()
     agent = DriveOpsAgent(ROOT / "data", tmp_path, provider)
     state = agent.run("CAN timeout")
+    assert state.run_id == agent.trace.run_id
     assert state.status.value == "complete"
     assert any(event["event_type"] == "retry" for event in agent.trace.events) is True
 
@@ -114,3 +115,34 @@ def test_review_reject_transition(tmp_path):
     agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
     state = agent.run("conflict CAN timeout")
     assert agent.review(state.run_id, False).status.value == "failed"
+
+
+def test_trace_contains_required_events(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    state = agent.run("CAN timeout")
+    assert state.run_id == agent.trace.run_id
+    import json
+
+    events = [json.loads(x) for x in agent.trace.path.read_text().splitlines()]
+    kinds = {e["event_type"] for e in events}
+    assert {
+        "run_start",
+        "memory_lookup",
+        "memory_miss",
+        "provider_call",
+        "tool_call",
+        "memory_save",
+        "run_end",
+    }.issubset(kinds)
+    assert all(
+        {
+            "run_id",
+            "step_id",
+            "timestamp",
+            "latency_ms",
+            "success",
+            "error",
+            "evidence_ids",
+        }.issubset(e)
+        for e in events
+    )

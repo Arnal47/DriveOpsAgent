@@ -12,7 +12,7 @@ class MemoryStore:
             "create table if not exists sessions(run_id text primary key, summary text);create table if not exists evidence(run_id text, payload text);create table if not exists decisions(run_id text, payload text);create table if not exists tool_calls(run_id text, payload text);create table if not exists summaries(run_id text, payload text);"
         )
 
-    def save(self, run_id, summary, evidence=(), decisions=()):
+    def save(self, run_id, summary, evidence=(), decisions=(), tool_calls=()):
         self.db.execute("insert or replace into sessions values(?,?)", (run_id, summary))
         self.db.executemany(
             "insert into evidence values(?,?)",
