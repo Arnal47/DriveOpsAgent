@@ -15,6 +15,9 @@ def main():
     r.add_argument("--provider", choices=["mock", "openai-compatible"], default="mock")
     s.add_parser("ingest")
     s.add_parser("eval")
+    memory = s.add_parser("memory")
+    memory.add_argument("action", choices=["list", "show", "clear"])
+    memory.add_argument("run_id", nargs="?")
     a = p.parse_args()
     root = Path(__file__).resolve().parents[2]
     if a.cmd == "ingest":
@@ -27,6 +30,16 @@ def main():
                 }
             )
         )
+        return
+    if a.cmd == "memory":
+        store = DriveOpsAgent(root / "data", root / "reports").memory
+        if a.action == "clear":
+            store.clear()
+            print("cleared")
+        elif a.action == "show":
+            print(json.dumps(store.show(a.run_id)))
+        else:
+            print(json.dumps(store.list()))
         return
     if a.cmd == "eval":
         print(json.dumps(run_evals(root), indent=2))
