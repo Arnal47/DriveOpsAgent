@@ -19,6 +19,22 @@ class DriveOpsAgent:
         self.memory = MemoryStore(reports_dir / "driveops_memory.sqlite")
         self.trace = None
 
+    def _provider_complete(self, purpose, payload):
+        for attempt in range(2):
+            try:
+                start = __import__("time").monotonic()
+                result = self.provider.complete(purpose, payload)
+                self.trace.emit(
+                    "provider_call",
+                    tool=purpose,
+                    latency_ms=(__import__("time").monotonic() - start) * 1000,
+                )
+                return result
+            except Exception as exc:
+                self.trace.emit("retry", tool=purpose, success=False, error=str(exc))
+                if attempt == 1:
+                    raise
+
     def _call(self, s, n, a):
         if s.step_count >= self.max_steps:
             raise RuntimeError("maximum execution steps reached")
@@ -82,7 +98,7 @@ class DriveOpsAgent:
                 d["untrusted"] = e.source.endswith(".md")
                 context.append(d)
             self.trace.emit("provider_call", tool="synthesis")
-            out = self.provider.complete("synthesis", {"task": task, "evidence": context})
+            out = self._provider_complete("synthesis", {"task": task, "evidence": context})
             s.claims = [
                 Claim(
                     claim_id=f"claim-{i}",

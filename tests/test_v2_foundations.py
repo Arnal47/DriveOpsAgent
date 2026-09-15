@@ -1,6 +1,12 @@
 import json
+from pathlib import Path
 
 import pytest
+
+from driveops_agent.agent import DriveOpsAgent
+from driveops_agent.providers import MockProvider
+
+ROOT = Path(__file__).parents[1]
 
 from driveops_agent.external.base import Adapter, ToolError
 from driveops_agent.memory.store import MemoryStore
@@ -71,3 +77,23 @@ def test_trace_event_types(tmp_path, event):
     t = Trace(tmp_path)
     t.emit(event)
     assert t.events[0]["event_type"] == event
+
+
+class FlakySynthesisProvider(MockProvider):
+    def __init__(self):
+        super().__init__()
+        self.failures = 0
+
+    def complete(self, purpose, payload):
+        if purpose == "synthesis" and self.failures == 0:
+            self.failures += 1
+            raise TimeoutError("provider timeout")
+        return super().complete(purpose, payload)
+
+
+def test_provider_timeout_recovery_through_agent(tmp_path):
+    provider = FlakySynthesisProvider()
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, provider)
+    state = agent.run("CAN timeout")
+    assert state.status.value == "complete"
+    assert any(event["event_type"] == "retry" for event in agent.trace.events) is True
