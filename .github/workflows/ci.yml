@@ -1,0 +1,42 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Check bootstrap project files
+        run: |
+          if [ -f pyproject.toml ]; then
+            echo "project_present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "project_present=false" >> "$GITHUB_OUTPUT"
+          fi
+        id: bootstrap
+      - name: Install development dependencies
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: pip install -e '.[dev]'
+      - name: Ruff lint
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: ruff check .
+      - name: Ruff format
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: ruff format --check .
+      - name: Pytest
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: pytest
+      - name: Offline eval
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: python -m driveops_agent.cli eval
+      - name: CLI smoke
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: python -m driveops_agent.cli run --task '为什么这次制动测试进入 failsafe？' --provider mock
+      - name: Bootstrap validation
+        if: ${{ hashFiles('pyproject.toml') == '' }}
+        run: |
+          echo "CI bootstrap: project files not present yet; workflow installation validated."
