@@ -97,3 +97,20 @@ def test_provider_timeout_recovery_through_agent(tmp_path):
     state = agent.run("CAN timeout")
     assert state.status.value == "complete"
     assert any(event["event_type"] == "retry" for event in agent.trace.events) is True
+
+
+def test_agent_routes_conflict_to_review(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    assert agent.run("conflict CAN timeout").status.value == "needs_review"
+
+
+def test_review_approve_transition(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    state = agent.run("conflict CAN timeout")
+    assert agent.review(state.run_id, True).status.value == "complete"
+
+
+def test_review_reject_transition(tmp_path):
+    agent = DriveOpsAgent(ROOT / "data", tmp_path, MockProvider())
+    state = agent.run("conflict CAN timeout")
+    assert agent.review(state.run_id, False).status.value == "failed"

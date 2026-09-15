@@ -18,6 +18,7 @@ class DriveOpsAgent:
         self.cache = {}
         self.memory = MemoryStore(reports_dir / "driveops_memory.sqlite")
         self.trace = None
+        self.pending_reviews = {}
 
     def _provider_complete(self, purpose, payload):
         for attempt in range(2):
@@ -55,6 +56,13 @@ class DriveOpsAgent:
         s.step_count += 1
         s.observations.append(f"{n}: {v}")
         return v
+
+    def review(self, run_id, approve):
+        state = self.pending_reviews.pop(run_id)
+        state.status = Status.COMPLETE if approve else Status.FAILED
+        if self.trace and self.trace.run_id == run_id:
+            self.trace.emit("review_approved" if approve else "review_rejected", success=approve)
+        return state
 
     def run(self, task):
         self.trace = Trace(self.registry.reports_dir / "traces")
@@ -137,11 +145,16 @@ class DriveOpsAgent:
                     + str(any(c.uncertain for c in s.claims))
                 )
                 self._call(s, "generate_report", {"findings": findings})
-            s.status = (
-                Status.UNCERTAIN
-                if verdict.unsupported_claims or any(c.uncertain for c in s.claims)
-                else Status.COMPLETE
-            )
+            if "conflict" in task.lower():
+                s.status = Status.NEEDS_REVIEW
+                self.pending_reviews[s.run_id] = s
+                self.trace.emit("review_required")
+            else:
+                s.status = (
+                    Status.UNCERTAIN
+                    if verdict.unsupported_claims or any(c.uncertain for c in s.claims)
+                    else Status.COMPLETE
+                )
         except Exception as e:
             s.errors.append(str(e))
             s.status = Status.FAILED
