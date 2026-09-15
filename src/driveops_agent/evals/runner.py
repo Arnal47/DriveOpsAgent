@@ -40,7 +40,6 @@ def _trace_ok(agent, review):
         "run_start",
         "provider_call",
         "memory_lookup",
-        "tool_call",
         "memory_save",
         "run_end",
     }
