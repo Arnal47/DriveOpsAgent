@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class Status(str, Enum):
+    NEEDS_REVIEW = "needs_review"
     RUNNING = "running"
     COMPLETE = "complete"
     UNCERTAIN = "uncertain"
