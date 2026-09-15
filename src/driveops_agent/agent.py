@@ -78,6 +78,16 @@ class DriveOpsAgent:
                 )
                 for i, c in enumerate(out.get("claims", []), 1)
             ]
+            if not any(e.tool == "read_log" for e in s.evidence):
+                s.claims = [
+                    Claim(
+                        claim_id="insufficient-log",
+                        text="Insufficient evidence: requested test log was not found.",
+                        evidence_ids=[],
+                        confidence=0.2,
+                        uncertain=True,
+                    )
+                ]
             verdict = verify(s)
             s.final_answer = (
                 out.get("prefix", "Synthesis")
@@ -95,7 +105,11 @@ class DriveOpsAgent:
                     + str(any(c.uncertain for c in s.claims))
                 )
                 self._call(s, "generate_report", {"findings": findings})
-            s.status = Status.UNCERTAIN if verdict.unsupported_claims else Status.COMPLETE
+            s.status = (
+                Status.UNCERTAIN
+                if verdict.unsupported_claims or any(c.uncertain for c in s.claims)
+                else Status.COMPLETE
+            )
         except Exception as e:
             s.errors.append(str(e))
             s.status = Status.FAILED

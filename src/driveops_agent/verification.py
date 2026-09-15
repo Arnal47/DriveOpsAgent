@@ -8,6 +8,8 @@ def verify(state):
         linked = [ids.get(eid) for eid in claim.evidence_ids]
         sources = {e.source for e in linked if e}
         failed = not linked or any(e is None for e in linked)
+        if claim.text.startswith("Insufficient evidence:") and claim.uncertain:
+            failed = False
         if "Most likely" in claim.text and len(sources) < 2 and not claim.uncertain:
             failed = True
         metric_values = [e.value for e in linked if e and e.source == "vehicle_signals.csv"]
