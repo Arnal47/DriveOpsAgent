@@ -47,7 +47,11 @@ def _trace_ok(agent, review):
     if review:
         required.add("review_required")
     fields = {"run_id", "step_id", "timestamp", "latency_ms", "success", "error", "evidence_ids"}
-    return required.issubset(names) and all(fields.issubset(e) for e in events)
+    return (
+        required.issubset(names)
+        and ({"tool_call", "tool_error"} & names)
+        and all(fields.issubset(e) for e in events)
+    )
 
 
 def run_evals(root):

@@ -77,6 +77,7 @@ class DriveOpsAgent:
         if prior:
             s.decisions.append("memory context available; current evidence remains authoritative")
         try:
+            self.trace.emit("provider_call", tool="planner")
             if self.external_adapter is not None:
                 try:
                     self.external_adapter.request("health", {})
@@ -88,6 +89,11 @@ class DriveOpsAgent:
                     s.status = Status.NEEDS_REVIEW
                     self.pending_reviews[s.run_id] = s
                     self.trace.emit("review_required")
+                    self.trace.emit("memory_save")
+                    self.memory.save(
+                        s.run_id, json.dumps(self.trace.summary()), [], s.decisions, []
+                    )
+                    self.trace.emit("run_end", success=False, error="adapter unavailable")
                     return s
             self.trace.emit("provider_call", tool="planner")
             intent, plan = make_plan(
