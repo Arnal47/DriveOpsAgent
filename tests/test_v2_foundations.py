@@ -146,3 +146,32 @@ def test_trace_contains_required_events(tmp_path):
         }.issubset(e)
         for e in events
     )
+
+
+def test_adapter_retry_through_agent(tmp_path):
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError()
+        return {}
+
+    from driveops_agent.external.base import Adapter
+
+    state = DriveOpsAgent(
+        ROOT / "data", tmp_path, MockProvider(), external_adapter=Adapter(transport, retries=1)
+    ).run("CAN timeout")
+    assert state.status.value == "complete" and len(calls) == 2
+
+
+def test_adapter_exhausted_routes_review(tmp_path):
+    from driveops_agent.external.base import Adapter
+
+    def transport(*args, **kwargs):
+        raise TimeoutError()
+
+    state = DriveOpsAgent(
+        ROOT / "data", tmp_path, MockProvider(), external_adapter=Adapter(transport, retries=0)
+    ).run("CAN timeout")
+    assert state.status.value == "needs_review"

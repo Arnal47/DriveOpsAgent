@@ -11,8 +11,11 @@ from .verification import verify
 
 
 class DriveOpsAgent:
-    def __init__(self, data_dir: Path, reports_dir: Path, provider=None, max_steps=16):
+    def __init__(
+        self, data_dir: Path, reports_dir: Path, provider=None, max_steps=16, external_adapter=None
+    ):
         self.registry = ToolRegistry(data_dir, reports_dir)
+        self.external_adapter = external_adapter
         self.provider = provider or MockProvider()
         self.max_steps = max_steps
         self.cache = {}
@@ -72,6 +75,18 @@ class DriveOpsAgent:
         self.trace.emit("memory_lookup")
         self.trace.emit("memory_hit" if prior else "memory_miss")
         try:
+            if self.external_adapter is not None:
+                try:
+                    self.external_adapter.request("health", {})
+                    self.trace.emit("tool_call", tool="external.health")
+                except Exception as exc:
+                    self.trace.emit(
+                        "tool_error", tool="external.health", success=False, error=str(exc)
+                    )
+                    s.status = Status.NEEDS_REVIEW
+                    self.pending_reviews[s.run_id] = s
+                    self.trace.emit("review_required")
+                    return s
             self.trace.emit("provider_call", tool="planner")
             intent, plan = make_plan(
                 task,
