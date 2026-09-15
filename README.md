@@ -49,3 +49,5 @@ python -m driveops_agent.cli eval
 ## Known limitations
 
 V1 uses fixture data and deterministic rules, with no external vector DB, web access, MCP, Web UI, multi-agent orchestration, long-term memory, or vehicle deployment. `OpenAICompatibleProvider` is configuration-only and deliberately unused in offline CI; it reads `API_KEY`, `BASE_URL`, and `MODEL` only from the environment.
+
+CI: GitHub Actions runs offline lint, tests, evaluation, and CLI smoke checks on pushes and pull requests.
