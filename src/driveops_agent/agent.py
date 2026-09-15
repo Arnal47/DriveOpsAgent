@@ -44,7 +44,11 @@ class DriveOpsAgent:
         self.trace = Trace(self.registry.reports_dir / "traces")
         s = AgentState(run_id=self.trace.run_id, user_goal=task)
         self.trace.emit("run_start")
+        prior = self.memory.list()
+        self.trace.emit("memory_lookup")
+        self.trace.emit("memory_hit" if prior else "memory_miss")
         try:
+            self.trace.emit("provider_call", tool="planner")
             intent, plan = make_plan(
                 task,
                 self.provider,
@@ -77,6 +81,7 @@ class DriveOpsAgent:
                 d = e.model_dump()
                 d["untrusted"] = e.source.endswith(".md")
                 context.append(d)
+            self.trace.emit("provider_call", tool="synthesis")
             out = self.provider.complete("synthesis", {"task": task, "evidence": context})
             s.claims = [
                 Claim(
@@ -130,6 +135,7 @@ class DriveOpsAgent:
                 success=s.status != Status.FAILED,
                 evidence_ids=[e.evidence_id for e in s.evidence],
             )
+            self.trace.emit("memory_save")
             self.memory.save(
                 s.run_id,
                 json.dumps(self.trace.summary()),
